@@ -6,7 +6,7 @@
     "name": "xunuo",
     "email": "i@xunuo.com"
   },
-  "repository": "gitbook-plugins/gitbook-plugin-search-pro",
+  "repository": "cocos-creator/gitbook-plugin-search-pro",
   "keywords": [
     "中文",
     "搜索",

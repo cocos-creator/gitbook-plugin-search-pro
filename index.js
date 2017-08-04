@@ -29,8 +29,32 @@ module.exports = {
             this.log.debug.ln('index page', page.path);
 
             text = page.content;
+
+            // Add properties and methods to search results
+            var matches = text.match(/<li><a\shref="#.+"><code>(.*)<\/code><\/a>((?:.|\n)*?)<\/li>/igm);
+
+            if (matches) {
+                matches.forEach((item) => {
+                    var name, desc, entry;
+                    var match = /<li><a\shref="#.+"><code>(.*)<\/code><\/a>((?:.|\n)*?)<\/li>/igm.exec(item);
+                    if (match) {
+                        name = page.title + '.' + match[1];
+                        desc = match[2].replace(/(<([^>]+)>)/ig, '').replace(/[\n ]+/g, ' ');
+                        entry = {
+                            url: this.output.toURL(page.path) + '#' + match[1].toLowerCase().replace('_', ''),
+                            title: name,
+                            summary: desc,
+                            keywords: match[1],
+                            body: desc
+                        };
+                        documentsStore[entry.url] = entry;
+                        // this.log.debug.ln('add member entry:', entry.title); 
+                    }
+                });
+            }
             // Decode HTML
             text = Html.decode(text);
+
             // Strip HTML tags
             text = text.replace(/(<([^>]+)>)/ig, '');
             text = text.replace(/[\n ]+/g, ' ');
@@ -49,6 +73,7 @@ module.exports = {
             };
 
             documentsStore[doc.url] = doc;
+
 
             return page;
         },

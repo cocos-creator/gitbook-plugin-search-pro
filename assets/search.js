@@ -6,6 +6,7 @@ require([
     var state = gitbook.state;
     var INDEX_DATA = {};
     var usePushState = (typeof history.pushState !== 'undefined');
+    var searchTimeout = null;
 
     // DOM Elements
     var $body = $('body');
@@ -17,17 +18,18 @@ require([
 
     // Throttle search
     function throttle(fn, wait) {
-        var timeout;
+        // var timeout;
 
         return function() {
             var ctx = this,
                 args = arguments;
-            if (!timeout) {
-                timeout = setTimeout(function() {
-                    timeout = null;
-                    fn.apply(ctx, args);
-                }, wait);
+            if (searchTimeout) {
+                clearTimeout(searchTimeout);
             }
+            searchTimeout = setTimeout(function () {
+                searchTimeout = null;
+                fn.apply(ctx, args);
+            }, wait);
         };
     }
 
@@ -50,6 +52,42 @@ require([
         $searchResultsCount.text(res.count);
         $searchQuery.text(res.query);
 
+        // Sort element based on title match
+        // OBSOLETE
+        // Levenshtein distance algorithm
+        // https://gist.github.com/andrei-m/982927#gistcomment-2059365
+        function dziemba_levenshtein(a, b) {
+            var tmp;
+            if (a.length === 0) { return b.length; }
+            if (b.length === 0) { return a.length; }
+            if (a.length > b.length) { tmp = a; a = b; b = tmp; }
+
+            var i, j, res, alen = a.length, blen = b.length, row = Array(alen);
+            for (i = 0; i <= alen; i++) { row[i] = i; }
+
+            for (i = 1; i <= blen; i++) {
+                res = i;
+                for (j = 1; j <= alen; j++) {
+                    tmp = row[j - 1];
+                    row[j - 1] = res;
+                    res = b[i - 1] === a[j - 1] ? tmp : Math.min(tmp + 1, Math.min(res + 1, row[j] + 1));
+                }
+            }
+            return res;
+        }
+
+        var titleMatches = [];
+        var count = res.results.length;
+        for (var c = count - 1; c >= 0; --c) {
+            var entry = res.results[c];
+            if (entry.title.toLowerCase().indexOf(res.query) !== -1) {
+                titleMatches.push(entry);
+                res.results.splice(c, 1);
+            }
+        }
+
+        res.results = titleMatches.concat(res.results);
+
         // Create an <li> element for each result
         res.results.forEach(function(item) {
             var $li = $('<li>', {
@@ -58,8 +96,10 @@ require([
 
             var $title = $('<h3>');
 
+            var queryStr = item.title.indexOf('.') !== -1 ? '' : '?h=' + encodeURIComponent(res.query);
+
             var $link = $('<a>', {
-                'href': gitbook.state.basePath + '/' + item.url + '?h=' + encodeURIComponent(res.query),
+                'href': gitbook.state.basePath + '/' + item.url + queryStr,
                 'text': item.title,
                 'data-is-search': 1
             });
@@ -90,10 +130,13 @@ require([
     function query(keyword) {
         if (keyword == null || keyword.trim() === '') return;
 
+        keyword = keyword.toLowerCase();
+
         var results = [],
             index = -1;
         for (var page in INDEX_DATA) {
-            if ((index = INDEX_DATA[page].body.toLowerCase().indexOf(keyword.toLowerCase())) !== -1) {
+            if ( (INDEX_DATA[page].title.toLowerCase().indexOf(keyword) !== -1) 
+                || (index = INDEX_DATA[page].body.toLowerCase().indexOf(keyword.toLowerCase())) !== -1 ) {
                 results.push({
                     url: page,
                     title: INDEX_DATA[page].title,
@@ -108,7 +151,7 @@ require([
         });
     }
 
-    function launchSearch(keyword) {
+    function launchSearch(keyword, immediateSearch) {
         // Add class for loading
         $body.addClass('with-search');
         $body.addClass('search-loading');
@@ -118,7 +161,9 @@ require([
             $body.removeClass('search-loading');
         }
 
-        throttle(doSearch)();
+        var delay = immediateSearch ? 0 : 500;
+
+        throttle(doSearch, delay)();
     }
 
     function closeSearch() {
@@ -131,18 +176,19 @@ require([
         var $body = $('body');
 
         // Launch query based on input content
-        function handleUpdate() {
+        function handleUpdate(enterPressed) {
             var $searchInput = $('#book-search-input input');
             var keyword = $searchInput.val();
 
             if (keyword.length == 0) {
                 closeSearch();
             } else {
-                launchSearch(keyword);
+                launchSearch(keyword, enterPressed);
             }
         }
 
         $body.on('keyup', '#book-search-input input', function(e) {
+            var enterPressed = false;
             if (e.keyCode === 13) {
                 if (usePushState) {
                     var uri = updateQueryString('q', $(this).val());
@@ -150,8 +196,9 @@ require([
                         path: uri
                     }, null, uri);
                 }
+                enterPressed = true;
             }
-            handleUpdate();
+            handleUpdate(enterPressed);
         });
 
         // Push to history on blur
