@@ -86,6 +86,10 @@ require([
             }
         }
 
+        titleMatches.sort( function(a, b) {
+            return Math.abs(a.title.length - res.query.length) - Math.abs(b.title.length - res.query.length);
+        });
+
         res.results = titleMatches.concat(res.results);
 
         // Create an <li> element for each result
